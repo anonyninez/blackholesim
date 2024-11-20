@@ -2,6 +2,7 @@ precision highp float;
 #define M_PI 3.14159265358979323846
 #define M_G 6.67430e-11
 #define M_c 299792458.0
+#define M_e 2.718281828459045
 
 uniform vec2 u_resolution;
 uniform vec3 u_cameraPos;
@@ -53,9 +54,10 @@ uniform Sphere u_spheres[1];
 
 const float mass = 1e25;
 const float bhR = 2.0 * (M_G * mass) / (M_c * M_c);
+const float tstep = 0.005;
 
-Disk disk = Disk( vec3(0), vec3(0., 1., 0.), .9, .15, 
-                  Material(vec3(1,1,1), vec3(1., .4, 0.), 1.));
+Disk disk = Disk( vec3(0), vec3(0., 1., 0.), .9, .08, 
+                  Material(vec3(1,1,1), vec3(1., .5, .2), 1.));
 
 float Rand3D(vec3 seed) {
     return fract(sin(dot(seed, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
@@ -97,60 +99,44 @@ vec3 GetSpaceHDRI(Ray ray) {
     return hdrColor;
 }
 
-float DiskDensity(vec3 point, vec3 center, float innerRadius, float outerRadius) {
-    vec3 direction = point - center;
-    float distanceFromCenter = length(direction);
+// HitInfo RayHitSphere(Ray ray, Sphere sphere) {
+//     HitInfo hitInfo;
+//     hitInfo.didHit = false;
+//     vec3 oc = ray.origin - sphere.pos;
+//     float b = dot(oc, ray.dir);
+//     float c = dot(oc, oc) - sphere.r * sphere.r;
+//     float h = b * b - c;
+//     if (h > 0.0){
+//         float sqrt_h = sqrt(h);
+//         float dst = -b - sqrt_h;
+//         float dstOut = -b + sqrt_h;
 
-    if (distanceFromCenter < innerRadius || distanceFromCenter > outerRadius) {
-        return 0.0;
-    }
+//         if (dst >= 0.0) {
+//             hitInfo.didHit = true;
+//             hitInfo.dst = dst;
+//             hitInfo.hitPoint = ray.origin + ray.dir * dst; 
+//             hitInfo.normal = normalize(hitInfo.hitPoint - sphere.pos);
+//             hitInfo.material = sphere.material;
+//         }
+//     }
+//     return hitInfo;
+// }
 
-    float normalizedDistance = (distanceFromCenter - innerRadius) / (outerRadius - innerRadius);
-    float noiseFactor = smoothstep(0.0, 1.0, normalizedDistance);
-    float noiseValue = noiseFactor * fract(sin(dot(point.xy, vec2(12.9898,78.233))) * 43758.5453);
+// HitInfo CalRayHitShpere(Ray ray) {
+//     HitInfo closestHit;
+//     closestHit.dst = 3.;
 
-    return smoothstep(0.2, 0.8, noiseValue) * noiseFactor;
-}
+//     for(int i = 0; i < u_numSpheres; i++) {
+//         Sphere sphere = u_spheres[i];
+//         HitInfo hitInfo = RayHitSphere(ray, sphere);
 
-
-HitInfo RayHitSphere(Ray ray, Sphere sphere) {
-    HitInfo hitInfo;
-    hitInfo.didHit = false;
-    vec3 oc = ray.origin - sphere.pos;
-    float b = dot(oc, ray.dir);
-    float c = dot(oc, oc) - sphere.r * sphere.r;
-    float h = b * b - c;
-    if (h > 0.0){
-        float sqrt_h = sqrt(h);
-        float dst = -b - sqrt_h;
-        float dstOut = -b + sqrt_h;
-
-        if (dst >= 0.0) {
-            hitInfo.didHit = true;
-            hitInfo.dst = dst;
-            hitInfo.hitPoint = ray.origin + ray.dir * dst; 
-            hitInfo.normal = normalize(hitInfo.hitPoint - sphere.pos);
-            hitInfo.material = sphere.material;
-        }
-    }
-    return hitInfo;
-}
-
-HitInfo CalRayHitShpere(Ray ray) {
-    HitInfo closestHit;
-    closestHit.dst = 3.;
-
-    for(int i = 0; i < u_numSpheres; i++) {
-        Sphere sphere = u_spheres[i];
-        HitInfo hitInfo = RayHitSphere(ray, sphere);
-
-        if(hitInfo.didHit && hitInfo.dst < closestHit.dst) {
-            closestHit = hitInfo;
-            closestHit.material = sphere.material;
-        }
-    }
-    return closestHit;
-}
+//         if(hitInfo.didHit && hitInfo.dst < closestHit.dst) {
+//             closestHit = hitInfo;
+//             closestHit.material = sphere.material;
+//         }
+//     }
+//     return closestHit;
+// }
 
 // HitInfo CalRayHitTriangle(Ray ray) {
 //     HitInfo closestHit;
@@ -167,54 +153,190 @@ HitInfo CalRayHitShpere(Ray ray) {
 //     }
 //     return closestHit;
 // }
-// vec3 CalculateForce(vec3 position, vec3 center, float mass) {
-//     vec3 direction = position - center;
-//     float distanceSquared = dot(direction, direction);
-//     return normalize(direction) * (-mass / distanceSquared);
-// }
-// vec3 CalculateForceOptimized(vec3 direction, float distanceSquared, float mass) {
-//     return // Avoids normalize by dividing directly
-// }
 
+vec3 P2C(vec3 p) {
+    return vec3(
+        p.x * sin(p.y) * cos(p.z),
+        p.x * sin(p.y) * sin(p.z),
+        p.x * cos(p.y)
+    );
+}
+
+vec3 C2P(vec3 c){
+    float r = sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
+    float lat = acos(c.z / r);
+    float lon = acos(c.x / sqrt(c.x * c.x + c.y * c.y)) * (c.y < 0. ? -1. : 1.);
+    return vec3(r, lat, lon);
+}
+
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
+
+float cnoise(vec3 P){
+    vec3 Pi0 = floor(P); // Integer part for indexing
+    vec3 Pi1 = Pi0 + vec3(1.0); // Integer part + 1
+    Pi0 = mod(Pi0, 289.0);
+    Pi1 = mod(Pi1, 289.0);
+    vec3 Pf0 = fract(P); // Fractional part for interpolation
+    vec3 Pf1 = Pf0 - vec3(1.0); // Fractional part - 1.0
+    vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+    vec4 iy = vec4(Pi0.yy, Pi1.yy);
+    vec4 iz0 = Pi0.zzzz;
+    vec4 iz1 = Pi1.zzzz;
+
+    vec4 ixy = permute(permute(ix) + iy);
+    vec4 ixy0 = permute(ixy + iz0);
+    vec4 ixy1 = permute(ixy + iz1);
+
+    vec4 gx0 = ixy0 / 7.0;
+    vec4 gy0 = fract(floor(gx0) / 7.0) - 0.5;
+    gx0 = fract(gx0);
+    vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+    vec4 sz0 = step(gz0, vec4(0.0));
+    gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+    gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+
+    vec4 gx1 = ixy1 / 7.0;
+    vec4 gy1 = fract(floor(gx1) / 7.0) - 0.5;
+    gx1 = fract(gx1);
+    vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+    vec4 sz1 = step(gz1, vec4(0.0));
+    gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+    gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+
+    vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+    vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+    vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+    vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+    vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+    vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+    vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+    vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+
+    vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+    g000 *= norm0.x;
+    g010 *= norm0.y;
+    g100 *= norm0.z;
+    g110 *= norm0.w;
+    vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+    g001 *= norm1.x;
+    g011 *= norm1.y;
+    g101 *= norm1.z;
+    g111 *= norm1.w;
+
+    float n000 = dot(g000, Pf0);
+    float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+    float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+    float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+    float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+    float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+    float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+    float n111 = dot(g111, Pf1);
+
+    vec3 fade_xyz = fade(Pf0);
+    vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+    vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+    float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x); 
+    return 2.2 * n_xyz;
+}
+
+float DiskShape(float len){
+    // return smoothstep(3. * bhR, 4., len) + .01;
+    return 0.01;
+}
+
+float DiskCol(float len){
+    float x_b = len - .18;
+    return pow(M_e, -pow((x_b)/(0.13 + 0.432 * x_b), 2.)) - 0.046;
+}
+
+float DiskDen(float len){
+    float x_a = 10. * pow(len, 6.) - 10.;
+    return -pow(M_e, x_a) + 1.;
+}
+
+vec3 RGBtoHSV(vec3 rgb) {
+    float cmax = max(rgb.r, max(rgb.g, rgb.b));
+    float cmin = min(rgb.r, min(rgb.g, rgb.b));
+    float delta = cmax - cmin;
+
+    float hue = 0.0;
+    if (delta > 0.0) {
+        if (cmax == rgb.r) {
+            hue = mod((rgb.g - rgb.b) / delta, 6.0);
+        } else if (cmax == rgb.g) {
+            hue = (rgb.b - rgb.r) / delta + 2.0;
+        } else {
+            hue = (rgb.r - rgb.g) / delta + 4.0;
+        }
+        hue *= 60.0;
+    }
+
+    float saturation = cmax == 0.0 ? 0.0 : delta / cmax;
+    return vec3(hue, saturation, cmax); // HSV: (Hue, Saturation, Value)
+}
+vec3 HSVtoRGB(vec3 hsv) {
+    float c = hsv.z * hsv.y; // Chroma
+    float x = c * (1.0 - abs(mod(hsv.x / 60.0, 2.0) - 1.0));
+    float m = hsv.z - c;
+
+    vec3 rgb = vec3(0.0);
+    if (0.0 <= hsv.x && hsv.x < 60.0) {
+        rgb = vec3(c, x, 0.0);
+    } else if (60.0 <= hsv.x && hsv.x < 120.0) {
+        rgb = vec3(x, c, 0.0);
+    } else if (120.0 <= hsv.x && hsv.x < 180.0) {
+        rgb = vec3(0.0, c, x);
+    } else if (180.0 <= hsv.x && hsv.x < 240.0) {
+        rgb = vec3(0.0, x, c);
+    } else if (240.0 <= hsv.x && hsv.x < 300.0) {
+        rgb = vec3(x, 0.0, c);
+    } else if (300.0 <= hsv.x && hsv.x < 360.0) {
+        rgb = vec3(c, 0.0, x);
+    }
+
+    return rgb + m;
+}
+
+vec3 ShiftHue(vec3 rgb, float s) {
+    vec3 hsv = RGBtoHSV(rgb);
+    hsv.x = mod(hsv.x + s, 360.0); // Adjust hue and wrap around 360
+    hsv.z += s / 50.;
+    hsv.y += s / 10.;
+    return HSVtoRGB(hsv);
+}
 
 HitInfo RayHitDisk(Ray ray, Disk disk) {
     HitInfo hitInfo;
     hitInfo.didHit = false;
-    float r = .01 / length(disk.pos - ray.origin);
-    float rng = (Rand3D(u_seed + gl_FragCoord.xyz) - .5) * r;
-    float denom = dot(ray.dir, disk.normal);
-    if (abs(denom) > 1e-6) { 
-        float t = dot(disk.pos + rng - ray.origin, disk.normal) / denom  ; 
-        if (t >= 0.) { 
-            vec3 hitPoint = ray.origin + t * ray.dir;
-            vec3 hitVec = hitPoint - disk.pos;
-            float dist2 = dot(hitVec, hitVec); 
 
-            if (dist2 <= disk.outerRadius * disk.outerRadius && dist2 >= disk.innerRadius * disk.innerRadius) {
-                hitInfo.didHit = true;
-                hitInfo.dst = t;
-                hitInfo.hitPoint = hitPoint;
-                hitInfo.normal = disk.normal;
-                hitInfo.material = disk.material;
-            }
-        }
+    float len = length(ray.origin.xyz);
+    float diskShapeDensity = DiskShape(len);
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+
+    if (abs(ray.origin.y ) < 0.01 * Rand3D(u_seed + uv.xyx) && len < 3.) {
+        
+        // if (t > 0.0) {
+            hitInfo.didHit = true;
+            hitInfo.dst = tstep;
+            hitInfo.hitPoint = ray.origin + tstep * ray.dir;
+            hitInfo.normal = vec3(0);
+            hitInfo.material = disk.material;
+        // }
     }
-
     return hitInfo;
 }
 
 HitInfo CalRayHit(Ray ray) {
     HitInfo closestHit;
     closestHit.didHit = false;
-    closestHit.dst = 0.01;
-    // for (int i = 0; i < u_numDisks; i++) {
-        // Disk disk = u_disks[i];
-        HitInfo hitInfo = RayHitDisk(ray, disk);
+    closestHit.dst = tstep;
+    HitInfo hitInfo = RayHitDisk(ray, disk);
 
-        if (hitInfo.didHit && hitInfo.dst < closestHit.dst) {
-            closestHit = hitInfo;
-        }
-    // }
+    if (hitInfo.didHit && hitInfo.dst <= closestHit.dst) {
+        closestHit = hitInfo;
+    }
 
     // for (int i = 0; i < u_numSpheres; i++) {
     //     Sphere sphere = u_spheres[i];
@@ -244,31 +366,47 @@ Ray bendingLight(Ray rayIn, float strength, float step) {
 vec3 Trace(Ray ray, vec3 seed) {
     vec3 incomingLight = vec3(0.0);
     vec3 rayColour = vec3(1.0);
-    float step = 0.01;
-    float tMax = 3.0;
+    vec3 red = vec3(1, 0, 0);
+    vec3 blue = vec3(0, 0, 1);
+    vec3 accrediskCol = vec3(1, .8, .6);
+
+    float tMax = 2.0;
 
     for (int i = 0; i <= u_rayBounces; i++) {
         float t = 0.0;
 
         while (t < tMax) {
-            ray = bendingLight(ray, bhR, step);
-            // ray.origin += ray.dir * step;
+            ray = bendingLight(ray, bhR, tstep);
+            // ray.origin += ray.dir * tstep;
             if (length(ray.origin) < bhR) break;
-            
             HitInfo hitInfo = CalRayHit(ray);
 
             if (hitInfo.didHit) {
-                float density = .8 / length(hitInfo.hitPoint) - 1. ;
-                if(Rand3D(seed) + density < .9) continue;
+                float hitPointLen = length(hitInfo.hitPoint);
+                // float f = -pow(M_e, hitPointLen - 1.) + 1.36788;
+                // float f = -0.5 * hitPointLen + 1.;
+                float f = pow(M_e, -2. * hitPointLen + .4) ;
+                float s = cross(hitInfo.hitPoint, ray.dir).y * (.5 / (hitPointLen*hitPointLen)) ;
+                vec3 pol = C2P(vec3(hitInfo.hitPoint.x, hitInfo.hitPoint.y + 0.2, hitInfo.hitPoint.z) * 100.);
+                pol.y = u_time;
+                float noise = cnoise(pol);
+                if(((Rand3D(seed) + noise) * f < .6) || pol.x < 20.5) continue;
+               
+                // vec3 diskLight = mix(accrediskCol, vec3(1.), noise);
+                // vec3 redShift = mix( vec3(1),red, max(s, 0.));
+                // vec3 blueShift = mix(vec3(1), blue,max(-s, 0.) );
+                // vec3 shiftedLight = mix(redShift, blueShift, 0.5);
+                vec3 shiftedLight = ShiftHue(accrediskCol, s);
+
                 Material mat = hitInfo.material;
                 ray.origin = hitInfo.hitPoint;
-                ray.dir = normalize(hitInfo.normal + RandDir(seed) * mat.spc);
+                ray.dir = normalize(hitInfo.normal + RandDir(seed));
 
-                incomingLight += mat.ilm * rayColour * (density + .3);
-                rayColour *= mat.col * density;
+                incomingLight += f / 2. * rayColour * shiftedLight;
+                rayColour *= mat.col;
                 break;
             }
-            t += step;
+            t += tstep;
         }
         if (t >= tMax) {
             incomingLight += GetSpaceHDRI(ray) * rayColour;
@@ -278,9 +416,6 @@ vec3 Trace(Ray ray, vec3 seed) {
     return max(incomingLight, 0.0);
 }
 
-
-
-
 void main() {
     vec2 fragCoord = gl_FragCoord.xy;
     vec2 uv = fragCoord / u_resolution;
@@ -289,12 +424,16 @@ void main() {
     Ray ray;
     ray.origin = u_cameraPos;
     ray.dir = GetRayDirection(fragCoord, u_resolution, u_cameraPos, u_focusPos);
+    
+    if(u_frameCount >= 64){
+        gl_FragColor = prev;
+        return;
+    }
 
-    // if(u_frameCount < 24){
-        curr = Trace(ray, vec3(uv.x, uv.y, 0) + u_seed );
-    // }else{
-    //     curr = prev.rgb;
-    // }
+    curr = Trace(ray, vec3(uv.x, uv.y, 0) + u_seed );
+    vec4 renderColor = vec4((prev.rgb * float(u_frameCount) + curr) / float(u_frameCount + 1), 1.);
+    gl_FragColor = renderColor;
+    
         // int nRay = 10;
         // vec3 light = vec3(0.0);
         // for(int i = 0; i < nRay; i++) {
@@ -302,7 +441,13 @@ void main() {
         // }
         // curr = light / float(nRay);
 
-    vec4 renderColor = vec4((prev.rgb * float(u_frameCount) + curr) / float(u_frameCount + 1), 1.);
-    gl_FragColor = renderColor;
+    // vec4 renderColor = vec4((prev.rgb * float(u_frameCount) + curr) / float(u_frameCount + 1), 1.);
+    // gl_FragColor = renderColor;
+//     uv = uv * 2. - 1.;
+//     vec3 pol = C2P(vec3(uv.x, u_time, uv.y) * 20.);
+//    float noise = cnoise(pol);
+//     // float noise = cnoise(vec3(uv.x, u_time, uv.y)  * 2.);
+//     vec3 color = vec3(noise);
+//     gl_FragColor = vec4(color, 1.0);
 
 }

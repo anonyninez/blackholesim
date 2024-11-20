@@ -2,7 +2,6 @@ import React, { useRef, useEffect } from "react";
 import * as THREE from "three";
 // eslint-disable-next-line import/no-webpack-loader-syntax
 import shader from '!!raw-loader!./shader.glsl';  
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 
 const RayTracing = () => {
   const spheres = [];
@@ -35,53 +34,53 @@ const RayTracing = () => {
   // }
   // console.log(CalculateForce(new THREE.Vector3(-.5, 0, 0), new THREE.Vector3(0, 0, 0), 2.0));
 
-  addSphere({ pos: new THREE.Vector3(0, 0.0, 0), 
-              r: 0.074,
-              material:{ 
-                col: new THREE.Vector3(0.0, 0.0, 0.0),
-                ilm: new THREE.Vector3(0.0, 0.0, 0.0),
-                spc: .6,
-            }}); // green
+  // addSphere({ pos: new THREE.Vector3(0, 0.0, 0), 
+  //             r: 0.074,
+  //             material:{ 
+  //               col: new THREE.Vector3(0.0, 0.0, 0.0),
+  //               ilm: new THREE.Vector3(0.0, 0.0, 0.0),
+  //               spc: .6,
+  //           }}); // green
 
-  addSphere({ pos: new THREE.Vector3(0.0, 0., 0.2), 
-              r:  0.1,
-              material:{ 
-                col: new THREE.Vector3(1.0, 0.4, 0.0),
-                ilm: new THREE.Vector3(0.5, 0.1, 0.0),
-                spc: 1.,
-              }}); // glow white
+  // addSphere({ pos: new THREE.Vector3(0.0, 0., 0.2), 
+  //             r:  0.1,
+  //             material:{ 
+  //               col: new THREE.Vector3(1.0, 0.4, 0.0),
+  //               ilm: new THREE.Vector3(0.5, 0.1, 0.0),
+  //               spc: 1.,
+  //             }}); // glow white
 
-  addSphere({ pos: new THREE.Vector3(0.0, 0.0, 0.4),
-              r: 0.08,
-              material: { 
-                col: new THREE.Vector3(1.0, 0.4, 0.0),
-                ilm: new THREE.Vector3(0.5, 0.1, 0.0),
-                spc: 0.0,
-              }}); // big white 
+  // addSphere({ pos: new THREE.Vector3(0.0, 0.0, 0.4),
+  //             r: 0.08,
+  //             material: { 
+  //               col: new THREE.Vector3(1.0, 0.4, 0.0),
+  //               ilm: new THREE.Vector3(0.5, 0.1, 0.0),
+  //               spc: 0.0,
+  //             }}); // big white 
 
-  addSphere({ pos: new THREE.Vector3(0.0, 0.0, 0.5),
-              r: 0.03,
-              material: { 
-                col: new THREE.Vector3(1.0, 0.4, 0.0),
-                ilm: new THREE.Vector3(0.5, 0.1, 0.0),
-                spc: .2,
-              }}); // blue
+  // addSphere({ pos: new THREE.Vector3(0.0, 0.0, 0.5),
+  //             r: 0.03,
+  //             material: { 
+  //               col: new THREE.Vector3(1.0, 0.4, 0.0),
+  //               ilm: new THREE.Vector3(0.5, 0.1, 0.0),
+  //               spc: .2,
+  //             }}); // blue
 
-  addSphere({ pos: new THREE.Vector3(0.0, 0.0, 1.),
-              r: 0.01,
-              material: { 
-                col: new THREE.Vector3(1.0, 0.4, 0.0),
-                ilm: new THREE.Vector3(0.5, 0.1, 0.0),
-                spc: 0,
-              }}); // red
+  // addSphere({ pos: new THREE.Vector3(0.0, 0.0, 1.),
+  //             r: 0.01,
+  //             material: { 
+  //               col: new THREE.Vector3(1.0, 0.4, 0.0),
+  //               ilm: new THREE.Vector3(0.5, 0.1, 0.0),
+  //               spc: 0,
+  //             }}); // red
 
   // console.log(spheres.length, "spheres");
   const mountRef = useRef(null);
-  const rayBounces = 10;
+  const rayBounces = 100;
 
-  let cameraRadius = .9;
+  let cameraRadius = .2;
   let mouseX = 0.73; // .5
-  let mouseY = .95; // 1.
+  let mouseY = .9; // 1.
   let frameCount = 0;
 
   const fpsDisplay = document.createElement('div');
@@ -105,7 +104,7 @@ const RayTracing = () => {
     let accumulationTarget = new THREE.WebGLRenderTarget(width, height);
     let renderTarget = new THREE.WebGLRenderTarget(width, height);
     
-    const spaceHDRI = new THREE.TextureLoader().load('./hdri2.png')
+    const spaceHDRI = new THREE.TextureLoader().load('./hdri_milkyway.png')
     spaceHDRI.mapping = THREE.EquirectangularReflectionMapping;
 
     renderer.setSize(width, height);
@@ -124,8 +123,8 @@ const RayTracing = () => {
         u_time: { value: 0.0 },
         u_rayBounces: { value: rayBounces },
         u_buffer: { value: null },
-        u_numSpheres: {value: spheres.length},
-        u_spheres: {value: spheres},
+        // u_numSpheres: {value: spheres.length},
+        // u_spheres: {value: spheres},
         u_cameraRadius: {value: cameraRadius},
         u_space: {value: spaceHDRI},
         u_seed: {value: new THREE.Vector3(Math.random(), Math.random(), Math.random())}
@@ -149,7 +148,7 @@ const RayTracing = () => {
         // console.log(rayBounces);
         cameraRadius += e.deltaY / 6000;
       }else{
-        cameraRadius += e.deltaY / 500;
+        cameraRadius += e.deltaY / 1000;
       }
     }
 
@@ -158,7 +157,7 @@ const RayTracing = () => {
     window.addEventListener("wheel", onWheel);
     window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+    });
 
     // Render loop
     const animate = () => {
@@ -166,7 +165,7 @@ const RayTracing = () => {
       accumulationTarget = renderTarget;
       renderTarget = temp;
       
-      // material.uniforms.u_time.value += 0.01;
+      material.uniforms.u_time.value += 0.01;
       material.uniforms.u_seed.value = new THREE.Vector3(Math.random(), Math.random(), Math.random());
       material.uniforms.u_cameraPos.value = rot2(new THREE.Vector3(0,0,0), cameraRadius , mouseX, mouseY);
      
@@ -175,11 +174,10 @@ const RayTracing = () => {
       // spheres[2].pos = rot1(new THREE.Vector3(0,0,0), .6, material.uniforms.u_time.value * 13.21 + 1.5);
       // spheres[3].pos = rot1(new THREE.Vector3(0,0,0), .7, material.uniforms.u_time.value * 13.21);
       // spheres[4].pos = rot1(new THREE.Vector3(0,0,0), .76, material.uniforms.u_time.value * 13.21 - 3);
-      material.uniforms.u_spheres.value = spheres;
+      // material.uniforms.u_spheres.value = spheres;
       // frameCount = 1;
 
       let now = performance.now();
-      // fps = (fps + (1000 /  (now - lastFrameTime))) / 2;
       fps[fpsIdx % 20] = (50 /  (now - lastFrameTime));
       fpsIdx += 1;
       fpsDisplay.innerText = `FPS: ${fps.reduce((a,b) => (a + b), 0).toFixed(2)}`;
@@ -201,10 +199,14 @@ const RayTracing = () => {
       window.removeEventListener("wheel", onWheel);
       mountRef.current.removeChild(renderer.domElement);
       renderer.dispose();
+      material.dispose();
+      accumulationTarget.dispose();
+      renderTarget.dispose();
+      spaceHDRI.dispose();
     };
   }, []);
 
-  return <div ref={mountRef} style={{ width: "100vw", height: "100vh" }} />;
+  return <div ref={mountRef} />;
 };
 
 export default RayTracing;

@@ -3,7 +3,7 @@ import BlackHoleEffect from './RayTracing.js';
 import './App.css';
 const App = () => {
   return (
-    <div style={{backgroundColor:'black', height:'100vh'}}>
+    <div style={{backgroundColor:'black',  width: "100vw", sheight:'100vh'}}>
       <BlackHoleEffect />
     </div>
   );
