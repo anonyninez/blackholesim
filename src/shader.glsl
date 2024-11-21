@@ -27,20 +27,6 @@ uniform struct Material {
     float spc;
 };
 
-uniform struct Sphere {
-    vec3 pos;
-    float r;
-    Material material;
-};
-
-uniform struct Disk {
-    vec3 pos;
-    vec3 normal;
-    float outerRadius;
-    float innerRadius;
-    Material material;
-};
-
 struct HitInfo {
     bool didHit;
     float dst;
@@ -49,15 +35,9 @@ struct HitInfo {
     Material material;
 };
 
-uniform int u_numSpheres;
-uniform Sphere u_spheres[1];
-
 const float mass = 1e25;
 const float bhR = 2.0 * (M_G * mass) / (M_c * M_c);
 const float tstep = 0.005;
-
-Disk disk = Disk( vec3(0), vec3(0., 1., 0.), .9, .08, 
-                  Material(vec3(1,1,1), vec3(1., .5, .2), 1.));
 
 float Rand3D(vec3 seed) {
     return fract(sin(dot(seed, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
@@ -99,80 +79,16 @@ vec3 GetSpaceHDRI(Ray ray) {
     return hdrColor;
 }
 
-// HitInfo RayHitSphere(Ray ray, Sphere sphere) {
-//     HitInfo hitInfo;
-//     hitInfo.didHit = false;
-//     vec3 oc = ray.origin - sphere.pos;
-//     float b = dot(oc, ray.dir);
-//     float c = dot(oc, oc) - sphere.r * sphere.r;
-//     float h = b * b - c;
-//     if (h > 0.0){
-//         float sqrt_h = sqrt(h);
-//         float dst = -b - sqrt_h;
-//         float dstOut = -b + sqrt_h;
-
-//         if (dst >= 0.0) {
-//             hitInfo.didHit = true;
-//             hitInfo.dst = dst;
-//             hitInfo.hitPoint = ray.origin + ray.dir * dst; 
-//             hitInfo.normal = normalize(hitInfo.hitPoint - sphere.pos);
-//             hitInfo.material = sphere.material;
-//         }
-//     }
-//     return hitInfo;
-// }
-
-// HitInfo CalRayHitShpere(Ray ray) {
-//     HitInfo closestHit;
-//     closestHit.dst = 3.;
-
-//     for(int i = 0; i < u_numSpheres; i++) {
-//         Sphere sphere = u_spheres[i];
-//         HitInfo hitInfo = RayHitSphere(ray, sphere);
-
-//         if(hitInfo.didHit && hitInfo.dst < closestHit.dst) {
-//             closestHit = hitInfo;
-//             closestHit.material = sphere.material;
-//         }
-//     }
-//     return closestHit;
-// }
-
-// HitInfo CalRayHitTriangle(Ray ray) {
-//     HitInfo closestHit;
-//     closestHit.dst = 1e5;
-
-//     for (int i = 0; i < u_numTriangles; i++) {
-//         Triangle tri = u_triangles[i];
-//         HitInfo hitInfo = RayHitTriangle(ray, tri);
-
-//         if (hitInfo.didHit && hitInfo.dst < closestHit.dst) {
-//             closestHit = hitInfo;
-//             closestHit.material = tri.material;
-//         }
-//     }
-//     return closestHit;
-// }
-
-vec3 P2C(vec3 p) {
-    return vec3(
-        p.x * sin(p.y) * cos(p.z),
-        p.x * sin(p.y) * sin(p.z),
-        p.x * cos(p.y)
-    );
-}
-
 vec3 C2P(vec3 c){
-    float r = sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
+    float r = length(c) ;
     float lat = acos(c.z / r);
-    float lon = acos(c.x / sqrt(c.x * c.x + c.y * c.y)) * (c.y < 0. ? -1. : 1.);
+    float lon = atan(c.y, c.x);
     return vec3(r, lat, lon);
 }
 
 vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
 vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
 vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
-
 float cnoise(vec3 P){
     vec3 Pi0 = floor(P); // Integer part for indexing
     vec3 Pi1 = Pi0 + vec3(1.0); // Integer part + 1
@@ -241,21 +157,6 @@ float cnoise(vec3 P){
     return 2.2 * n_xyz;
 }
 
-float DiskShape(float len){
-    // return smoothstep(3. * bhR, 4., len) + .01;
-    return 0.01;
-}
-
-float DiskCol(float len){
-    float x_b = len - .18;
-    return pow(M_e, -pow((x_b)/(0.13 + 0.432 * x_b), 2.)) - 0.046;
-}
-
-float DiskDen(float len){
-    float x_a = 10. * pow(len, 6.) - 10.;
-    return -pow(M_e, x_a) + 1.;
-}
-
 vec3 RGBtoHSV(vec3 rgb) {
     float cmax = max(rgb.r, max(rgb.g, rgb.b));
     float cmin = min(rgb.r, min(rgb.g, rgb.b));
@@ -307,23 +208,18 @@ vec3 ShiftHue(vec3 rgb, float s) {
     return HSVtoRGB(hsv);
 }
 
-HitInfo RayHitDisk(Ray ray, Disk disk) {
+HitInfo RayHitDisk(Ray ray) {
     HitInfo hitInfo;
     hitInfo.didHit = false;
 
     float len = length(ray.origin.xyz);
-    float diskShapeDensity = DiskShape(len);
     vec2 uv = gl_FragCoord.xy / u_resolution;
-
-    if (abs(ray.origin.y ) < 0.01 * Rand3D(u_seed + uv.xyx) && len < 3.) {
-        
-        // if (t > 0.0) {
-            hitInfo.didHit = true;
-            hitInfo.dst = tstep;
-            hitInfo.hitPoint = ray.origin + tstep * ray.dir;
-            hitInfo.normal = vec3(0);
-            hitInfo.material = disk.material;
-        // }
+    if (abs(ray.origin.y) < 0.01 * Rand3D(u_seed + uv.xyx) && len < 2.) {
+        hitInfo.didHit = true;
+        hitInfo.dst = tstep;
+        hitInfo.hitPoint = ray.origin + tstep * ray.dir;
+        hitInfo.normal = vec3(0);
+        hitInfo.material = Material(vec3(1), vec3(1), 1.);
     }
     return hitInfo;
 }
@@ -332,20 +228,11 @@ HitInfo CalRayHit(Ray ray) {
     HitInfo closestHit;
     closestHit.didHit = false;
     closestHit.dst = tstep;
-    HitInfo hitInfo = RayHitDisk(ray, disk);
+    HitInfo hitInfo = RayHitDisk(ray);
 
     if (hitInfo.didHit && hitInfo.dst <= closestHit.dst) {
         closestHit = hitInfo;
     }
-
-    // for (int i = 0; i < u_numSpheres; i++) {
-    //     Sphere sphere = u_spheres[i];
-    //     HitInfo hitInfo = RayHitSphere(ray, sphere);
-
-    //     if (hitInfo.didHit && hitInfo.dst < closestHit.dst) {
-    //         closestHit = hitInfo;
-    //     }
-    // }
 
     return closestHit;
 }
@@ -366,8 +253,6 @@ Ray bendingLight(Ray rayIn, float strength, float step) {
 vec3 Trace(Ray ray, vec3 seed) {
     vec3 incomingLight = vec3(0.0);
     vec3 rayColour = vec3(1.0);
-    vec3 red = vec3(1, 0, 0);
-    vec3 blue = vec3(0, 0, 1);
     vec3 accrediskCol = vec3(1, .8, .6);
 
     float tMax = 2.0;
@@ -376,26 +261,19 @@ vec3 Trace(Ray ray, vec3 seed) {
         float t = 0.0;
 
         while (t < tMax) {
-            ray = bendingLight(ray, bhR, tstep);
-            // ray.origin += ray.dir * tstep;
-            if (length(ray.origin) < bhR) break;
-            HitInfo hitInfo = CalRayHit(ray);
+            ray = bendingLight(ray, bhR, tstep); // Apply Gravitational lensing
+            if (length(ray.origin) < bhR) break; // Fill black
+            HitInfo hitInfo = CalRayHit(ray); 
 
             if (hitInfo.didHit) {
                 float hitPointLen = length(hitInfo.hitPoint);
-                // float f = -pow(M_e, hitPointLen - 1.) + 1.36788;
-                // float f = -0.5 * hitPointLen + 1.;
-                float f = pow(M_e, -2. * hitPointLen + .4) ;
-                float s = cross(hitInfo.hitPoint, ray.dir).y * (.5 / (hitPointLen*hitPointLen)) ;
-                vec3 pol = C2P(vec3(hitInfo.hitPoint.x, hitInfo.hitPoint.y + 0.2, hitInfo.hitPoint.z) * 100.);
-                pol.y = u_time;
+                float f = pow(M_e, -2. * hitPointLen + .4); // Fade, Cutoff
+                float s = cross(hitInfo.hitPoint, ray.dir).y * (.5 / (hitPointLen*hitPointLen)); // Random math by me
+                vec3 pol = C2P(vec3(hitInfo.hitPoint.x, hitInfo.hitPoint.y + 0.5, hitInfo.hitPoint.z) * 90.);
+                pol.y = u_time; // Blend 
                 float noise = cnoise(pol);
-                if(((Rand3D(seed) + noise) * f < .6) || pol.x < 20.5) continue;
+                if(((Rand3D(seed) + noise) * f < .5) || pol.x < 45.5) continue; // Random hit depends on density
                
-                // vec3 diskLight = mix(accrediskCol, vec3(1.), noise);
-                // vec3 redShift = mix( vec3(1),red, max(s, 0.));
-                // vec3 blueShift = mix(vec3(1), blue,max(-s, 0.) );
-                // vec3 shiftedLight = mix(redShift, blueShift, 0.5);
                 vec3 shiftedLight = ShiftHue(accrediskCol, s);
 
                 Material mat = hitInfo.material;
@@ -425,7 +303,7 @@ void main() {
     ray.origin = u_cameraPos;
     ray.dir = GetRayDirection(fragCoord, u_resolution, u_cameraPos, u_focusPos);
     
-    if(u_frameCount >= 64){
+    if(u_frameCount >= 64){ // Frame limiter
         gl_FragColor = prev;
         return;
     }
@@ -433,21 +311,14 @@ void main() {
     curr = Trace(ray, vec3(uv.x, uv.y, 0) + u_seed );
     vec4 renderColor = vec4((prev.rgb * float(u_frameCount) + curr) / float(u_frameCount + 1), 1.);
     gl_FragColor = renderColor;
-    
-        // int nRay = 10;
-        // vec3 light = vec3(0.0);
-        // for(int i = 0; i < nRay; i++) {
-        //     light += Trace(ray,  vec3(uv.x, uv.y, 0) + u_seed + float(i));
-        // }
-        // curr = light / float(nRay);
+
+    // int nRay = 10; 
+    // vec3 light = vec3(0.0);
+    // for(int i = 0; i < nRay; i++) {
+    //     light += Trace(ray,  vec3(uv.x, uv.y, 0) + u_seed + float(i));
+    // }
+    // curr = light / float(nRay);
 
     // vec4 renderColor = vec4((prev.rgb * float(u_frameCount) + curr) / float(u_frameCount + 1), 1.);
     // gl_FragColor = renderColor;
-//     uv = uv * 2. - 1.;
-//     vec3 pol = C2P(vec3(uv.x, u_time, uv.y) * 20.);
-//    float noise = cnoise(pol);
-//     // float noise = cnoise(vec3(uv.x, u_time, uv.y)  * 2.);
-//     vec3 color = vec3(noise);
-//     gl_FragColor = vec4(color, 1.0);
-
 }
